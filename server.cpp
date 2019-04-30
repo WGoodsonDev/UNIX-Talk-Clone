@@ -63,8 +63,8 @@ int main(int argc, char *argv[]){
         ticks = time(NULL);
         snprintf(buff, sizeof(buff), "%.24s\n", ctime(&ticks));
         printf("Connection from %s, port %d\n", ctime(&ticks));
-        if(write(connectionfd, buff, strlen(buff)) < 0){
-            fprintf( stderr, "Write failed.  %s\n", strerror( errno ) );
+        if(read(connectionfd, buff, strlen(buff)) < 0){
+            fprintf( stderr, "Read failed.  %s\n", strerror( errno ) );
             exit( 1 );
         }
         // Finished talking to this client. Close the connection
