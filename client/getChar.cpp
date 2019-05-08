@@ -9,7 +9,7 @@
 
 #include "getChar.hpp"
 
-const int SEC_DELAY = 1;
+const int SEC_DELAY = 2;
 const int USEC_DELAY = 100000;
 static char lastc = ' ';
 void die( void );
@@ -33,7 +33,6 @@ char get_char( )
      if ( retval ) {
          if ( read(0, &c, 1) < 0)
              die();
-//         if( c == LEFT || c == RIGHT || c == UP || c == DOWN ) 
          lastc = c;
      }
      return( lastc );

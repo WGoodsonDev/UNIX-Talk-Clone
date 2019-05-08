@@ -1,14 +1,15 @@
-#include<sys/types.h>	
-#include<sys/socket.h>	
-#include<arpa/inet.h>
-#include<netinet/in.h>	
-#include<sys/time.h>
-#include<stdio.h>
-#include<errno.h>
-#include<string.h>
-#include<unistd.h>
-#include<stdlib.h>
-#include<time.h>
+#include <sys/types.h>	
+#include <sys/socket.h>	
+#include <arpa/inet.h>
+#include <netinet/in.h>	
+#include <sys/time.h>
+#include <stdio.h>
+#include <iostream>
+#include <errno.h>
+#include <string.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <time.h>
 
 // PORT NUMBERS: 8028, 8029
 
@@ -24,6 +25,7 @@ int main(int argc, char *argv[]){
     socklen_t len;
     struct sockaddr_in servaddr, cliaddr;
     char buff[MAXLINE];
+    char readBuff[MAXLINE];
     time_t ticks;
 
     // Create an endpoint for IPv4 connection
@@ -60,16 +62,19 @@ int main(int argc, char *argv[]){
                 inet_ntop(AF_INET, &cliaddr.sin_addr, buff, sizeof(buff)),
                 ntohs(cliaddr.sin_port));
 
-        ticks = time(NULL);
-        snprintf(buff, sizeof(buff), "%.24s\n", ctime(&ticks));
-        printf("Connection from %s, port %d\n", ctime(&ticks));
-        if(read(connectionfd, buff, strlen(buff)) < 0){
+
+        // READ LOOP?
+        int num_chars_read = read(connectionfd, readBuff, strlen(readBuff));
+        if( num_chars_read < 0){
             fprintf( stderr, "Read failed.  %s\n", strerror( errno ) );
             exit( 1 );
         }
-        // Finished talking to this client. Close the connection
-        close(connectionfd);
+        printf("Number of characters read: %i\n", num_chars_read);
+        printf("%s\n", readBuff);
+        // Finished talking to this client. Close the connection   
     }
+    
+    close(connectionfd);
     
 
     return 0;

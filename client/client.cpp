@@ -35,6 +35,7 @@ int main(int argc, char *argv[]){
     int socketfd, n;
     char recvline[MAXLINE + 1];
     struct sockaddr_in servaddr;
+    const char* buff = "TESTING";
 
     if(argc != 2){
          fprintf(stderr, "Usage: %s <IPaddress>\n", argv[0]);
@@ -61,6 +62,13 @@ int main(int argc, char *argv[]){
          fprintf(stderr, "Connect error: %x\n", strerror(errno));
          exit(4);
     }
+
+     if(write(socketfd, buff, strlen(buff)) < 0){
+          fprintf(stderr, "write error in client: could not write %s", buff);
+          exit(5);
+     }
+
+/*
     // Get curses going
     startup();
 
@@ -74,11 +82,18 @@ int main(int argc, char *argv[]){
     topWindow.resize(0);
     bottomWindow.resize(0);
 
+
     // Main loop
     while(c != QUIT){
          c = get_char();
-     //     clear();
-     //     move(OUTPUT_LINE, 0);
+         buff[0] = c;
+         if(buff[0] != '`'){
+              if(write(socketfd, buff, strlen(buff)) < 0){
+                    fprintf(stderr, "write error in client: could not write %c", c);
+                    exit(5);
+               }
+         }
+
          // Each new character gets added to inputStream, and the current horizontal cursor position increments
          inputStream << c;
          lineCharCount++;
@@ -123,9 +138,9 @@ int main(int argc, char *argv[]){
     terminate();
 
     // Talk to the server
-    
-
-    return 0;
+*/
+     close(socketfd);
+     return 0;
 }
 
 void startup( void )
