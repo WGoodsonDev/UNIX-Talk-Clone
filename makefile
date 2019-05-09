@@ -1,6 +1,6 @@
 server:
-	g++ server.cpp -o server
+	g++ -o server server.cpp getChar.cpp -g -lncurses
 
 clean:
 	rm server
-	g++ server.cpp -o server
+	g++ -o server server.cpp getChar.cpp -g -lncurses
