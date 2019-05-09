@@ -1,3 +1,4 @@
 ## Ignore Visual Studio Code local files and example files
 /.vscode
 /screenExample
+*.exe
