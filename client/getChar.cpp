@@ -9,7 +9,7 @@
 
 #include "getChar.hpp"
 
-const int SEC_DELAY = 2;
+const int SEC_DELAY = 5;
 const int USEC_DELAY = 100000;
 static char lastc = ' ';
 void die( void );

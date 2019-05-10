@@ -16,6 +16,7 @@
 #include <errno.h>
 #include <vector>
 #include <string.h>
+#include <algorithm>
 
 // PORT NUMBERS: 8028, 8029
 
@@ -38,9 +39,8 @@ void sendThread(int sendFD);
 int listenForClient(int argc, char *argv[]);
 void sendToClient(int connectionFD, char msg);
 int connectToClient(int argc, char *argv[]);
-char *receiveFromClient(int connectionfd);
+char receiveFromClient(int connectionfd);
 
-void cursesLoop(int sendFD, int receiveFD);
 
 int main(int argc, char *argv[]){
 
@@ -50,47 +50,155 @@ int main(int argc, char *argv[]){
     refresh();
 
     int sendFD = listenForClient(argc, argv);    
+    int receiveFD = connectToClient(argc, argv);
 
     std::thread sndThread(&sendThread, sendFD);
+    std::thread recThread(&receiveThread, receiveFD);
     
     sndThread.join();
+    recThread.join();
+    terminate();
+
     return 0;
 }
 
-void startup( void )
-{
-     initscr();     // activate curses
-     curs_set(0);   // prevent the cursor to be displayed
-     clear();	     // clear the screen that curses provides 
-     noecho();      // prevent the input chars to be echoed to the screen
-     cbreak();      // change the stty so that characters are delivered to the program as they are typed--no need to hit the return key!
-}
+void receiveThread(int receiveFD){
+    int charPos = 0;
+    std::stringstream inputStream;
+    std::vector<std::string> windowStrings;
+    windowStrings.resize(0);
 
-void terminate( void )
-{
-     mvcur( 0, COLS - 1, LINES - 1, 0 );
-     clear();
-     refresh();
-     endwin();
-}
-
-void receiveThread(int recFD){
-    
+    char c;
+    while(c != '`'){
+        c = receiveFromClient(receiveFD);
+        inputStream << c;
+        // If we get to the end of the line, need to shift everything up
+        if(charPos > HORIZ_CUTOFF || c == 10){
+            clear();
+            windowStrings.insert(windowStrings.begin(), inputStream.str());
+            inputStream.str("");
+            charPos = 0;
+        }
+        // Display past lines above output line
+        int strIdx = 0;
+        for(int line = NUM_ROWS / 2 - 2; line >= 0; line--){
+            if(strIdx < windowStrings.size()){
+                const char *currentLine = windowStrings[strIdx].c_str();
+                mvaddstr(line, 0, currentLine);
+            }
+            strIdx++;
+        }
+        // Move to output line and display the string so far
+        const char *output = inputStream.str().c_str();
+        mvaddstr(NUM_ROWS / 2 - 1, 0, output);
+        // Draw separating line
+        move(NUM_ROWS / 2, 0);
+        hline(ACS_HLINE, NUM_COLS);
+        refresh();
+        charPos++;
+    }
+    close(receiveFD);
 }
 void sendThread(int sendFD){
-    int charPos = 0;
-    char c;
 
+    int charPos = 0;
+
+    std::stringstream inputStream;
+    std::vector<std::string> windowStrings;
+    windowStrings.resize(0);
+
+    char c;
+    c = get_char();
     while(c != '`'){
         c = get_char();
         sendToClient(sendFD, c);
 
-        mvaddch(NUM_ROWS / 2 - 1, charPos % HORIZ_CUTOFF, c);
+        inputStream << c;
+        // If we get to the end of the line, need to shift everything up
+        if(charPos > HORIZ_CUTOFF || c == 10){
+            clear();
+            windowStrings.insert(windowStrings.begin(), inputStream.str());
+            inputStream.str("");
+            charPos = 0;
+        }
+        // Display past lines above output line
+        int strIdx = 0;
+        for(int line = NUM_ROWS - 2; line > NUM_ROWS / 2 ; line--){
+            if(strIdx < windowStrings.size()){
+                const char *currentLine = windowStrings[strIdx].c_str();
+                mvaddstr(line, 0, currentLine);
+            }
+            strIdx++;
+        }
+        // Move to output line and display the string so far
+        const char *output = inputStream.str().c_str();
+        mvaddstr(NUM_ROWS - 1, 0, output);
+        // Draw separating line
+        move(NUM_ROWS / 2, 0);
+        hline(ACS_HLINE, NUM_COLS);
         refresh();
         charPos++;
     }
-    
     close(sendFD);
+}
+
+void sendToClient(int cListenFD, char c){
+    char msgbuff[10];
+    msgbuff[0] = c;
+    if( write(cListenFD, msgbuff, strlen(msgbuff)) < 0 ) {
+	    fprintf( stderr, "Write failed.  %s\n", strerror( errno ) );
+	    exit( 1 );
+	}
+}
+
+char receiveFromClient(int connectionfd){
+    int n;
+    char recvline[10];
+	n = read(connectionfd, recvline, 1);
+     recvline[n] = 0;	/* null terminate */
+		// if (fputs(recvline, stdout) == EOF) {
+          //      terminate();
+		// 	fprintf( stderr, "fputs error: %s", strerror( errno ) );
+		// 	exit( 5 );
+		// }
+
+	if (n < 0) {
+          terminate();
+	    fprintf( stderr, "read error: %s", strerror( errno ) );
+	    exit( 6 );
+	}
+     return recvline[0];
+}
+
+int connectToClient(int argc, char *argv[]){
+    int socketfd;
+    struct sockaddr_in servaddr;
+
+
+    // Create socket endpoint using IPv4 and a stream socket
+    if((socketfd = socket(AF_INET, SOCK_STREAM, 0)) < 0){
+         fprintf(stderr, "Socket error. %s\n", strerror(errno));
+         exit(2);
+    }
+
+    // Build a profile for the server
+    bzero(&servaddr, sizeof(servaddr));
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_port = htons(CLIENT_PORT);
+    std::string ip = "127.0.0.1";
+    const char *ip_addr = ip.c_str();
+    if(inet_pton(AF_INET, ip_addr , &servaddr.sin_addr) <= 0){
+         fprintf(stderr, "inet_pton error for 127.0.0.1");
+         exit(3);
+    }
+
+    // Attempt to connect to the server
+    if(connect(socketfd, (struct sockaddr *) &servaddr, sizeof(servaddr)) < 0){
+         fprintf(stderr, "Connect error: %x\n", strerror(errno));
+         exit(4);
+    }
+
+    return socketfd;
 }
 
 int listenForClient(int argc, char *argv[]){
@@ -138,133 +246,19 @@ int listenForClient(int argc, char *argv[]){
     return connectionfd;
 }
 
-void sendToClient(int cListenFD, char c){
-    char msgbuff[10];
-    msgbuff[0] = c;
-    if( write(cListenFD, msgbuff, strlen(msgbuff)) < 0 ) {
-	    fprintf( stderr, "Write failed.  %s\n", strerror( errno ) );
-	    exit( 1 );
-	}
+void startup( void )
+{
+     initscr();     // activate curses
+     curs_set(0);   // prevent the cursor to be displayed
+     clear();	     // clear the screen that curses provides 
+     noecho();      // prevent the input chars to be echoed to the screen
+     cbreak();      // change the stty so that characters are delivered to the program as they are typed--no need to hit the return key!
 }
 
-int connectToClient(int argc, char *argv[]){
-    int socketfd;
-    struct sockaddr_in servaddr;
-
-    // if(argc != 2){
-    //      fprintf(stderr, "Usage: %s <IPaddress>\n", argv[0]);
-    //      exit(1);
-    // }
-
-    // Create socket endpoint using IPv4 and a stream socket
-    if((socketfd = socket(AF_INET, SOCK_STREAM, 0)) < 0){
-         fprintf(stderr, "Socket error. %s\n", strerror(errno));
-         exit(2);
-    }
-
-    // Build a profile for the server
-    bzero(&servaddr, sizeof(servaddr));
-    servaddr.sin_family = AF_INET;
-    servaddr.sin_port = htons(CLIENT_PORT);
-    std::string ip = "127.0.0.1";
-    const char *ip_addr = ip.c_str();
-    if(inet_pton(AF_INET, ip_addr , &servaddr.sin_addr) <= 0){
-         fprintf(stderr, "inet_pton error for 127.0.0.1");
-         exit(3);
-    }
-
-    // Attempt to connect to the server
-    if(connect(socketfd, (struct sockaddr *) &servaddr, sizeof(servaddr)) < 0){
-         fprintf(stderr, "Connect error: %x\n", strerror(errno));
-         exit(4);
-    }
-
-    return socketfd;
-}
-
-char *receiveFromClient(int connectionfd){
-    int n;
-    char recvline[2];
-	while ( (n = read(connectionfd, recvline, 1)) > 0) {
-		recvline[n] = 0;	/* null terminate */
-		if (fputs(recvline, stdout) == EOF) {
-			fprintf( stderr, "fputs error: %s", strerror( errno ) );
-			exit( 5 );
-		}
-	}
-	if (n < 0) {
-	    fprintf( stderr, "read error: %s", strerror( errno ) );
-	    exit( 6 );
-	}
-     return 0;
-}
-
-void cursesLoop(int sendFD, int receiveFD){
-    char buff[2];
-    char c = get_char();
-    int breakLine = NUM_ROWS / 2;
-    int lineCharCount = 0;
-
-    std::stringstream inputStream;
-    std::vector<std::string> topWindow;
-    std::vector<std::string> bottomWindow;
-    topWindow.resize(0);
-    bottomWindow.resize(0);
-
-
-    // Main loop
-    while(c != QUIT){
-         c = get_char();
-         buff[0] = c;
-         buff[1] = 0;
-         if(buff[0] != '`'){
-            //   if(write(sendFD, buff, strlen(buff)) < 0){
-            //         fprintf(stderr, "write error in client: could not write %c", c);
-            //         terminate();
-            //         exit(5);
-            //    }
-         }
-
-         // Each new character gets added to inputStream, and the current horizontal cursor position increments
-         inputStream << c;
-         lineCharCount++;
-         mvaddch(OUTPUT_LINE, lineCharCount, c);
-         // Check for backspace NOT WORKING
-     //     if(c == 127){
-     //          std::string temp = inputStream.str();
-     //          temp.pop_back();
-     //          inputStream.str(temp);
-     //          lineCharCount--;
-     //     } else {
-     //          lineCharCount++;
-     //     }
-         
-        //  // If we get to the end of the line, need to shift everything up
-        //  if(lineCharCount > HORIZ_CUTOFF || c == 10){
-        //       clear();
-        //       topWindow.push_back(inputStream.str());
-        //       inputStream.str("");
-
-        //       lineCharCount = 0;
-        //  }
-        //  // Display past lines above output line
-        //  int strIdx = 0;
-        //   for(int line = OUTPUT_LINE - 1; line > 0; line--){
-        //        if(strIdx < topWindow.size()){
-        //             const char *currentLine = topWindow[strIdx].c_str();
-        //             mvaddstr(line, 0, currentLine);
-        //        }
-        //        strIdx++;
-        //   }
-          // Move to output line and display the string so far
-        //   const char *output = inputStream.str().c_str();
-        //   mvaddstr(OUTPUT_LINE, 0, output);
-         for(int i = 0; i < NUM_COLS; i++){
-          //     std::string lineNum = std::to_string(i);
-          //     mvaddch(i, 0, lineNum[0]);
-              move(breakLine, i);
-              addch('_');
-         }
-         refresh();
-    }
+void terminate( void )
+{
+     mvcur( 0, COLS - 1, LINES - 1, 0 );
+     clear();
+     refresh();
+     endwin();
 }
