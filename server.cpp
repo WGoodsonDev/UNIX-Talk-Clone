@@ -8,7 +8,7 @@
 #include <sys/socket.h>	
 #include <netinet/in.h>	
 #include <arpa/inet.h>
-
+#include <thread>
 #include <sys/time.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,8 +32,11 @@
 void startup(void);
 void terminate(void);
 
+void receiveThread(int recFD);
+void sendThread(int sendFD);
+
 int listenForClient(int argc, char *argv[]);
-void sendToClient(int connectionFD, char *msg);
+void sendToClient(int connectionFD, char msg);
 int connectToClient(int argc, char *argv[]);
 char *receiveFromClient(int connectionfd);
 
@@ -41,20 +44,16 @@ void cursesLoop(int sendFD, int receiveFD);
 
 int main(int argc, char *argv[]){
 
-    int sendFD = listenForClient(argc, argv);    
-    char message = 'F';
-    sendToClient(sendFD, &message);
-
-    // int receiveFD = connectToClient(argc, argv);
-    // char * msg = receiveFromClient(receiveFD);
-
-    // Get curses going
     startup();
-    cursesLoop(sendFD, 0);
-    terminate();
+    move(NUM_ROWS / 2, 0);
+    hline(ACS_HLINE, NUM_COLS);
+    refresh();
 
-    close(sendFD);
-    // close(receiveFD);
+    int sendFD = listenForClient(argc, argv);    
+
+    std::thread sndThread(&sendThread, sendFD);
+    
+    sndThread.join();
     return 0;
 }
 
@@ -73,6 +72,25 @@ void terminate( void )
      clear();
      refresh();
      endwin();
+}
+
+void receiveThread(int recFD){
+    
+}
+void sendThread(int sendFD){
+    int charPos = 0;
+    char c;
+
+    while(c != '`'){
+        c = get_char();
+        sendToClient(sendFD, c);
+
+        mvaddch(NUM_ROWS / 2 - 1, charPos % HORIZ_CUTOFF, c);
+        refresh();
+        charPos++;
+    }
+    
+    close(sendFD);
 }
 
 int listenForClient(int argc, char *argv[]){
@@ -111,16 +129,18 @@ int listenForClient(int argc, char *argv[]){
             fprintf(stderr, "Accept failed. %s\n", strerror(errno));
             exit(1);
         }
-        printf("Connection from %s, port %d\n",
-                inet_ntop(AF_INET, &cliaddr.sin_addr, buff, sizeof(buff)),
-                ntohs(cliaddr.sin_port));
+        // printf("Connection from %s, port %d\n",
+        //         inet_ntop(AF_INET, &cliaddr.sin_addr, buff, sizeof(buff)),
+        //         ntohs(cliaddr.sin_port));
 
         break; 
     }
     return connectionfd;
 }
 
-void sendToClient(int cListenFD, char *msgbuff){
+void sendToClient(int cListenFD, char c){
+    char msgbuff[10];
+    msgbuff[0] = c;
     if( write(cListenFD, msgbuff, strlen(msgbuff)) < 0 ) {
 	    fprintf( stderr, "Write failed.  %s\n", strerror( errno ) );
 	    exit( 1 );
@@ -198,11 +218,11 @@ void cursesLoop(int sendFD, int receiveFD){
          buff[0] = c;
          buff[1] = 0;
          if(buff[0] != '`'){
-              if(write(sendFD, buff, strlen(buff)) < 0){
-                    fprintf(stderr, "write error in client: could not write %c", c);
-                    terminate();
-                    exit(5);
-               }
+            //   if(write(sendFD, buff, strlen(buff)) < 0){
+            //         fprintf(stderr, "write error in client: could not write %c", c);
+            //         terminate();
+            //         exit(5);
+            //    }
          }
 
          // Each new character gets added to inputStream, and the current horizontal cursor position increments

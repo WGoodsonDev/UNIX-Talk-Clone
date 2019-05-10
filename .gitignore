@@ -2,3 +2,4 @@
 /.vscode
 /screenExample
 *.exe
+*.stackdump
